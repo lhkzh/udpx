@@ -1,0 +1,149 @@
+Frame{
+  flag:帧标记-1byte,
+  len:帧头部长度-1byte,
+  seq:序列号-1byte,
+  ack:响应序号-1byte,
+
+  writeNum:写出次数=重传次数+1
+  createTime:创建时间，用于计算过去多久了
+}
+
+seq:当前SEQ
+lastSeq:最后收到的数据SEQ
+ackNum:需要响应的ACK数
+
+SYN_QUEUE[待ACK队列]写出后等待ACK，收到ACK后移除
+IN_QUEUE[接收到的Frame队列] 缺帧乱帧等待
+
+主动查询SYN_QUEUE，如果队列满，不可以继续写入，如果队列中重传次数过多/或者超时，则关闭通道认为网络错误
+主动重传SYN_QUEUE
+#主动查看接收队列，发送此类ACK，时间可以略久
+
+handFrame(frame){
+   if(!(frame is Ack)){
+      ackNum++;
+   }
+   if(连接){
+      连接响应
+   }else if(连接响应){
+      连接成功
+   }else if(关闭){
+      ->关闭
+      关闭自己
+   }else{
+      if(Data){
+         if(frame.seq<=lastSeq){
+		sendAck(frame);
+	 }
+	 if(IN_QUEUE.isFull()){
+		if(IN_QUEUE[i].seq<frame.seq){
+			if(frame.seq==nextSeq(lastSeq)){
+				IN_QUEUE[i-1] = frame;
+				sendAck(frame);
+				(i-1).remove();
+			    lastSeq = (i-1).seq;
+			    handData(i.data());
+			}
+		}
+	 }else{
+		 IN_QUEUE.add(frame);
+		 sort(frame);
+		 if(IN_QUEUE[i].seq=(lastSeq+1)){
+		    i.remove();
+		    lastSeq = i.seq;
+		    handData(i.data());
+		 }
+		 
+	 }
+      }else if(ACK_ARR){
+		 if(SYN_QUEUE[i].seq==ack[i]){
+		    i.remove();
+		 }
+		 
+		 int in_last_seq = segment.ack();
+		 int out_last_seq = acks[acks.length-1];
+		 while(SYN_QUEUE){
+			if ((compare(SYN_QUEUE[i].seq(), in_last_seq) <= 0)) {
+			    it.remove();
+			    continue;
+			}
+		}
+		while(SYN_QUEUE){
+		     for(acks)
+			if ((compare(SYN_QUEUE[i].seq(), acks[i]) == 0)) {
+				it.remove();
+				break;
+			    }
+		}
+		for(SYN_QUEUE){
+			if(compare(in_last_seq,Q[I].seq)<0 && compare(out_last_seq,Q[I].seq)>0){
+				reSend(i);
+			}
+		}
+      }else if(ACK){
+         
+      }
+      checkAck(frame)
+   }
+}
+reSend(frame){
+   if(frame.rewritenum>36){
+       //maybe-io-error
+   }
+    sendFrameImp(f);
+    if(IN_QUEUE.isEmpty()==false && ackNum>1){
+	    sendAckArr();
+    }else{
+	sendAck();
+    }
+}
+sendAck(){
+   sendFrame(new ACK(nextSeq(lastInSeq), lastInSequence));
+}
+sendAckArr(){
+   sendFrame(new EACK(nextSeq(lastInSeq), lastInSequence, acks));
+   ackNum=0;
+}
+sendFrame(f){
+  if(!(f=ACK)){
+     if(ackNum>0){
+        f.ack = lastInSeq;
+     }
+  }
+   sendFrameImp(f);
+}
+checkAck(frame){
+	if(frame.ack()<0)return;
+	while(SYN_QUEUE){
+		 if(compare(SYN_QUEUE[i].seq,frame.ack())<=0){
+		    i.remove();
+		 }
+	 }
+}
+
+private static final int MAX_SEQ = 255;
+/**
+* Computes the consecutive sequence number.
+* @return the next number in the sequence.
+*/
+public static int next(int n)
+{
+	return (n + 1) % MAX_SEQ;
+}
+/**
+* Compares two sequence numbers.
+* @return 0, 1 or -1 if the first sequence number is equal,
+*         greater or less than the second sequence number.
+*         (see RFC 1982).
+*/
+public static int compare(int a, int b)
+{
+	if (a == b) {
+	    return 0;
+	}else if (((a < b) && ((b - a) > MAX_SEQ/2)) ||
+		 ((a > b) && ((a - b) < MAX_SEQ/2))) {
+	    return 1;
+	}else {
+	    return -1;
+	}
+}
