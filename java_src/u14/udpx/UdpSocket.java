@@ -129,12 +129,35 @@ public class UdpSocket implements Runnable {
 	 */
 	public UdpSocket send(DatagramPacket p) throws IOException{
 		if(channel==null||channel.isClosed()){
+			if(address==null){
+				throw new IOException("You must bind a address or use client model(UdpSocket.client())!");
+			}
 			throw new IOException("Socket had closed!");
 		}
 		channel.send(p);
 		return this;
 	}
-	
+	/**
+	 * 发送数据包
+	 * @param buf
+	 * @param address
+	 * @return
+	 * @throws IOException
+	 */
+	public UdpSocket send(byte[] buf, SocketAddress address) throws IOException{
+		return send(new DatagramPacket(buf, buf.length, address));
+	}
+	/**
+	 * 发送数据包
+	 * @param buf
+	 * @param host
+	 * @param port
+	 * @return
+	 * @throws IOException
+	 */
+	public UdpSocket send(byte[] buf, String host, int port) throws IOException{
+		return send(new DatagramPacket(buf, buf.length, new InetSocketAddress(host, port)));
+	}
 	/**
 	 * 开始工作
 	 * @return

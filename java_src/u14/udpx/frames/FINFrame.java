@@ -44,6 +44,11 @@ public class FINFrame extends Frame
         init(FIN_FLAG, seqn, HEADER_LEN);
     }
 
+    @Override
+    public byte[] getBytes() {
+        return sum(super.getBytes());
+    }
+
     public String type()
     {
         return "FIN";

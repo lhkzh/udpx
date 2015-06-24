@@ -57,12 +57,48 @@ public abstract class Frame {
 	}
     public byte[] getBytes()
     {
-        byte[] buffer = new byte[length()];
+        byte[] buffer = new byte[length()+2];
         buffer[0] = (byte) (flag & 0xFF);
         buffer[1] = (byte) (len & 0xFF);
         buffer[2] = (byte) (seq & 0xFF);
         buffer[3] = (byte) (ack & 0xFF);
         return buffer;
+    }
+    protected static byte[] sum(byte[] b){
+        int len = b.length-2;
+        if(len>255){
+            len = 255;
+        }
+        short n = 0;
+        for(int i=0;i<len;i++){
+            n += b[i]&0xff;
+        }
+        b[b.length-2] = (byte)(n>>8);
+        b[b.length-1] = (byte)n;
+        return b;
+    }
+    protected static boolean checkSum(byte[] b){
+        int len = b.length-2;
+        if(len>255){
+            len = 255;
+        }
+        short n = 0;
+        for(int i=0;i<len;i++){
+            n += b[i]&0xff;
+        }
+        return b[b.length-2] == (byte)(n>>8) && b[b.length-1] == (byte)n;
+    }
+    protected static boolean checkSum(byte[] b, int off, int len){
+        int size = len-2;
+        if(size>255){
+            size = 255;
+        }
+        int end = off+size;
+        short n = 0;
+        for(int i=off;i<end;i++){
+            n += b[i]&0xff;
+        }
+        return b[end] == (byte)(n>>8) && b[end+1] == (byte)n;
     }
     public String toString()
     {
@@ -89,13 +125,23 @@ public abstract class Frame {
     
     public static Frame parse(byte[] bytes)
     {
-        return Frame.parse(bytes, 0, bytes.length);
+        if(!checkSum(bytes)){
+//          throw new IllegalArgumentException("Invalid segment sum");
+            return null;
+        }
+        return parseImp(bytes, 0, bytes.length-2);
     }
-
-    public static Frame parse(byte[] bytes, int off, int len)
+    public static Frame parse(byte[] bytes, int off, int len){
+        if(!checkSum(bytes,off,len)){
+//            throw new IllegalArgumentException("Invalid segment sum");
+            return null;
+        }
+        return parseImp(bytes, off, len-2);
+    }
+    private static Frame parseImp(byte[] bytes, int off, int len)
     {
         if (len < HEADER_LEN) {
-//            throw new IllegalArgumentException("Invalid segment");
+//          throw new IllegalArgumentException("Invalid segment");
         	return null;
         }
         Frame segment = null;
@@ -129,6 +175,9 @@ public abstract class Frame {
         return segment;
     }
     
+    /**
+     * 比较器(用于排序)
+     */
     public static Comparator<Frame> Comparator = new Comparator<Frame>() {
 		@Override
 		public int compare(Frame o1, Frame o2) {

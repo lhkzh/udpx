@@ -19,6 +19,7 @@ public class UxServer {
 	private UdpSocket socket;
 	private ConcurrentHashMap<SocketAddress, UxSocket> map;
 	private UxSocketListener delegate;
+	private Thread hookThread;
 	
 	public UxServer(){
 		map = new ConcurrentHashMap<SocketAddress, UxSocket>();
@@ -29,6 +30,12 @@ public class UxServer {
 			}
 		}).name("UxServer_recive");
 		socket.useWorkThread(true);
+		hookThread = new Thread(){
+		    @Override
+		    public void run(){
+		        UxServer.this.stop();
+		    }
+		};
 	}
 	
 	public int size(){
@@ -44,12 +51,14 @@ public class UxServer {
 	
 	public UxServer bind(InetSocketAddress addr) throws IOException{
 		this.socket.bind(addr).start();
+		Runtime.getRuntime().addShutdownHook(hookThread);
 		return this;
 	}
 	private void onReciveData(DatagramPacket packet) {
 		UxSocket sk = map.get(packet.getSocketAddress());
 		if(sk==null){
-			Frame frame = Frame.parse(packet.getData(),packet.getOffset(),packet.getLength());
+//			Frame frame = Frame.parse(packet.getData(),packet.getOffset(),packet.getLength());
+		    Frame frame = Frame.parse(packet.getData());
 			if(frame instanceof SYNFrame && accept(packet)){
 				sk = new UxServerInnerSocket(this, packet.getSocketAddress());
 //				System.out.println("server-new-socket:"+sk.address+"  #  "+frame);
@@ -75,11 +84,12 @@ public class UxServer {
 	
 	public synchronized void stop(){
 		Object[] arr = map.values().toArray();
+		map.clear();
 		for(Object n : arr){
 			((UxSocket) n).close();
 		}
-		map.clear();
 		socket.stop();
+		Runtime.getRuntime().removeShutdownHook(hookThread);
 	}
 	
 	public UdpSocket socket() {

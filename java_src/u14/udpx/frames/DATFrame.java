@@ -71,7 +71,7 @@ public class DATFrame extends Frame
     {
         byte[] buffer = super.getBytes();
         System.arraycopy(_data, 0, buffer, HEADER_LEN, _data.length);
-        return buffer;
+        return sum(buffer);
     }
 
     public void parseBytes(byte[] buffer, int off, int len)

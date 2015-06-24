@@ -46,7 +46,10 @@ public class LIVFrame extends Frame
     {
         init(LIV_FLAG, seqn, HEADER_LEN);
     }
-
+    @Override
+    public byte[] getBytes() {
+        return sum(super.getBytes());
+    }
     public String type()
     {
         return "LIV";

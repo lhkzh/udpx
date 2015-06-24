@@ -2,7 +2,6 @@ package u14.udpx;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.util.concurrent.TimeoutException;
 
 import u14.udpx.frames.DATFrame;
 
@@ -21,7 +20,7 @@ class UxServerInnerSocket extends UxSocket{
 
 	@Override
 	public synchronized void connect(SocketAddress addr, int timeout)
-			throws IOException, TimeoutException {
+			throws IOException {
 		throw new IllegalAccessError("Not implements!");
 	}
 

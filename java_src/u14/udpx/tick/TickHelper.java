@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class TickHelper {
 
-	private volatile static ScheduledThreadPoolExecutor executor = reset(1);
+	private volatile static ScheduledThreadPoolExecutor executor = reset(Runtime.getRuntime().availableProcessors());
 	
     /**
      * 每次执行任务的时间不受前次任务延时影响。
@@ -40,7 +40,15 @@ public class TickHelper {
     public static Future<?> interval(Runnable task, long firstDelay, long interval, TimeUnit unit) {
     	return executor.scheduleAtFixedRate(task, firstDelay, interval, unit);
     }
-    
+    /**
+     * 在指定的延时之后开始以固定的频率来运行任务。后续任务的启动时间不受前次任务延时影响。
+     * @param task          具体待执行的任务
+     * @param interval      每次执行任务的间隔时间
+     * @param unit          时间单位
+     */
+    public static Future<?> intervalWithFixedDelay(Runnable task, long interval, TimeUnit unit) {
+        return executor.scheduleWithFixedDelay(task, interval, interval, unit);
+    }
     /**
      * 每次执行任务的时间不受前次任务延时影响。
      * @param task			具体待执行的任务

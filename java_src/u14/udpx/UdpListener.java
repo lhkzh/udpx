@@ -6,6 +6,7 @@ import java.net.DatagramPacket;
  * udp-socket 数据侦听器
  * @author zhangheng
  */
+@FunctionalInterface
 public interface UdpListener {
 	public void handData(UdpSocket socket, DatagramPacket packet);
 }

@@ -48,6 +48,11 @@ public class ACKFrame extends Frame
         ack(ackn);
     }
 
+    @Override
+    public byte[] getBytes() {
+        return sum(super.getBytes());
+    }
+
     public String type()
     {
         return "ACK";

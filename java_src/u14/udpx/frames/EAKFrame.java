@@ -38,8 +38,10 @@ package u14.udpx.frames;
  */
 public class EAKFrame extends Frame
 {
+    private static final int[] EMPTY_ACKS = new int[]{};
     protected EAKFrame()
     {
+        _acks = EMPTY_ACKS;
     }
 
     public EAKFrame(int seqn, int ackn,  int[] acks)
@@ -67,7 +69,7 @@ public class EAKFrame extends Frame
             buffer[HEADER_LEN+i] = (byte) (_acks[i] & 0xFF);
         }
 
-        return buffer;
+        return sum(buffer);
     }
 
     protected void parseBytes(byte[] buffer, int off, int length)

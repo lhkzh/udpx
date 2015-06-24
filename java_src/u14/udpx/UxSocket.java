@@ -3,13 +3,13 @@ package u14.udpx;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 
 import u14.udpx.frames.ACKFrame;
@@ -43,7 +43,7 @@ public class UxSocket {
 	protected volatile UxSocketStat stat = UxSocketStat.INIT;
 	protected Seq seq;
 	
-	private ArrayList<Frame> inQueue;//收到的帧队列
+	private ArrayList<Frame> inQueue;//收到的帧队列(因为乱序-用于快速确认)
 	private LinkedBlockingDeque<Frame> synQueue;//待ack确认的队列
 	private LinkedBlockingDeque<Frame> outQueue;//待写出队列，防止一次大量写入阻塞超时
 	
@@ -64,7 +64,7 @@ public class UxSocket {
 	public String closeInfo(){
 		return closeInfo;
 	}
-	
+	private static final int TICK_INTERVAL = 250;
 	public UxSocket(){
 		locker = new ReentrantLock();
 		socket = UdpSocket.client();
@@ -95,11 +95,7 @@ public class UxSocket {
 	 * @throws IOException
 	 */
 	public UxSocket connect(SocketAddress addr) throws IOException{
-		try {
-			this.connect(addr, DefaultConnectTimeOut);
-		} catch (TimeoutException e) {
-			throw new IOException(e);
-		}
+		this.connect(addr, DefaultConnectTimeOut);
 		return this;
 	}
 	/**
@@ -107,9 +103,8 @@ public class UxSocket {
 	 * @param addr
 	 * @param timeout
 	 * @throws IOException
-	 * @throws TimeoutException
 	 */
-	public synchronized void connect(SocketAddress addr, int timeout) throws IOException, TimeoutException{
+	public synchronized void connect(SocketAddress addr, int timeout) throws IOException{
 		if(this.stat==UxSocketStat.CONNECT){
 			return;
 		}
@@ -117,12 +112,24 @@ public class UxSocket {
 		this.stat = UxSocketStat.CONNECT;
 		seq.initNum();
 		int oldTimeout = socket.socket().getSoTimeout();
-		socket.socket().setSoTimeout(timeout);
-		sendFrameImp(new SYNFrame(seq.num()));
+		socket.socket().setSoTimeout(1000);
+		Frame connectFrame = new SYNFrame(seq.num());
 		DatagramPacket packet = new DatagramPacket(new byte[MaxFrameSize], MaxFrameSize);
-		socket.socket().receive(packet);
-		Frame frame = Frame.parse(packet.getData(),0,packet.getLength());
-		if(frame instanceof ACKFrame && frame.ack()==seq.num() && this.stat==UxSocketStat.CONNECT){
+		long startTm = System.currentTimeMillis();
+		do{
+		    try{
+    		    sendFrameImp(connectFrame);
+    		    socket.socket().receive(packet);
+    		    break;
+		    }catch(SocketTimeoutException e){
+		        if((System.currentTimeMillis()-startTm)>timeout){
+		            this.stat = UxSocketStat.CLOSED;
+		            throw new IOException("CONNECT-TIME-OUT");
+		        }
+		    }
+		}while(true);
+		Frame frame = Frame.parse(packet.getData(), packet.getOffset(), packet.getLength());
+		if(frame!=null && frame instanceof ACKFrame && frame.ack()==seq.num() && this.stat==UxSocketStat.CONNECT){
 			seq.setLastInNum(frame.seq());
 			socket.socket().setSoTimeout(oldTimeout);
 			socket.listen(new UdpListener() {
@@ -136,7 +143,7 @@ public class UxSocket {
 			this.onOpen();
 		}else{
 			this.stat = UxSocketStat.CLOSED;
-			throw new TimeoutException("CONNECT-TIME-OUT");
+			throw new IOException("CONNECT-TIME-OUT");
 		}
 	}
 	/**
@@ -158,7 +165,7 @@ public class UxSocket {
 		if(tickFuture!=null){
 			tickFuture.cancel(true);
 		}
-		tickFuture = TickHelper.interval(tickTask, 125, TimeUnit.MILLISECONDS);
+		tickFuture = TickHelper.timeout(tickTask, 250, TimeUnit.MILLISECONDS);
 	}
 	public boolean isConnected(){
 		return this.stat==UxSocketStat.WORK;
@@ -204,8 +211,13 @@ public class UxSocket {
 	void doTick(){
 		locker.lock();
 		try{
-			this.doTickImp();
+		    if(isConnected()){
+		        this.doTickImp();
+		    }
 		}finally{
+		    if(isConnected()){
+		        tickFuture = TickHelper.timeout(tickTask, TICK_INTERVAL, TimeUnit.MILLISECONDS);
+		    }
 			locker.unlock();
 		}
 	}
@@ -221,6 +233,9 @@ public class UxSocket {
 			heart_local=0;
 			this.sendFrame(new LIVFrame(Seq.next(seq.getLastInNum())));
 		}
+//		if(!synQueue.isEmpty() || !inQueue.isEmpty()){
+//		    System.out.println(seq.num()+" "+seq.getLastInNum()+" ->"+Arrays.toString(inQueue.toArray()) + " \n=> "+Arrays.toString(synQueue.toArray()));
+//		}
 		retry_interval++;
 		if(retry_interval%2==0){
 			Iterator<Frame> it = synQueue.iterator();
@@ -239,7 +254,8 @@ public class UxSocket {
 	 * @param packet
 	 */
 	void handData(DatagramPacket packet){
-		Frame frame = Frame.parse(packet.getData(),packet.getOffset(),packet.getLength());
+//		Frame frame = Frame.parse(packet.getData(),packet.getOffset(),packet.getLength());
+	    Frame frame = Frame.parse(packet.getData());
 		if(frame==null){
 			return;
 		}
@@ -506,13 +522,46 @@ public class UxSocket {
 		  f.ack(seq.getLastInNum());
 		  sendFrameImp(f);
 	}
+//	private ArrayList<Frame> frames = new ArrayList<Frame>();
+//	private boolean first = true;
 	/**
 	 * 写出数据的实现
 	 * @param f
 	 */
 	protected void sendFrameImp(Frame f){
+	    /*if(!first && Math.random()>0.6 && frames.size()<=8){
+	        synchronized(frames){
+	            frames.add(f);
+	        }
+	        this.resetLiv(false);
+	        return;
+	    }
+	    first = false;
+	    if(frames.size()>8 || Math.random()<0.05){
+	        synchronized (frames) {
+    	        Collections.shuffle(frames);
+    	        for(Frame n:frames){
+    	            byte[] bin = n.getBytes();
+    	            if(Math.random()>0.7){
+    	                bin[0] = 0;
+    	            }
+    	            DatagramPacket packet = new DatagramPacket(bin, bin.length, address);
+    	            try {
+    	                socket.send(packet);
+    	                this.resetLiv(false);
+    	            } catch (IOException e) {
+    	                e.printStackTrace();
+    	                this.closeInfo = "CloseBySendIoException";
+    	                this.close();
+    	            }
+    	        }
+    	        frames.clear();
+	        }
+	    }*/
+	    
 //		System.out.println(socket.name()+"_send:"+f.type()+"-"+ "   "+f);
-		DatagramPacket packet = new DatagramPacket(f.getBytes(), f.length(), address);
+	    byte[] bin = f.getBytes();
+		DatagramPacket packet = new DatagramPacket(bin, bin.length, address);
 		try {
 			socket.send(packet);
 			this.resetLiv(false);
